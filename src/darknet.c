@@ -7,6 +7,7 @@
 #include "cuda.h"
 #include "blas.h"
 #include "connected_layer.h"
+#include "output.h"
 
 extern void predict_classifier(char *datacfg, char *cfgfile, char *weightfile, char *filename, int top);
 extern void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh, char *outfile, int fullscreen);
@@ -408,6 +409,10 @@ int main(int argc, char **argv)
     }
 #endif
 
+    char *prefix = find_char_arg(argc, argv, "-output", 0);
+    if (prefix != 0)
+        setup_file_output(prefix);
+
     if (0 == strcmp(argv[1], "average")){
         average(argc, argv);
     } else if (0 == strcmp(argv[1], "yolo")){
@@ -493,6 +498,9 @@ int main(int argc, char **argv)
     } else {
         fprintf(stderr, "Not an option: %s\n", argv[1]);
     }
+
+    close_output();
+
     return 0;
 }
 

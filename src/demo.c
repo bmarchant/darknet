@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "box.h"
 #include "image.h"
+#include "output.h"
 #include "demo.h"
 #include <sys/time.h>
 
@@ -72,15 +73,16 @@ void *detect_in_thread(void *ptr)
     }
     if (nms > 0) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
 
-    printf("\033[2J");
-    printf("\033[1;1H");
-    printf("\nFPS:%.1f\n",fps);
-    printf("Objects:\n\n");
+    write_to_output(STD_OUT, "FPS:%.1f\n",fps);
+    write_to_output(STD_OUT, "Objects:\n\n");
     image display = buff[(buff_index+2) % 3];
     draw_detections(display, demo_detections, demo_thresh, boxes, probs, demo_names, demo_alphabet, demo_classes);
 
     demo_index = (demo_index + 1)%demo_frame;
     running = 0;
+    
+    clear_output();
+
     return 0;
 }
 
@@ -133,6 +135,26 @@ void *detect_loop(void *ptr)
     }
 }
 
+void write_frame(CvVideoWriter* video, image* img)
+{
+    image copy = copy_image(*img);
+    constrain_image(copy);
+    if(img->c == 3) rgbgr_image(copy);
+    IplImage *i = cvCreateImage(cvSize(img->w,img->h), IPL_DEPTH_8U, img->c);
+    int step = i->widthStep;
+    int x, y, k;
+    for(y = 0; y < img->h; ++y){
+        for(x = 0; x < img->w; ++x){
+            for(k= 0; k < img->c; ++k){
+                i->imageData[y*step + x*img->c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
+            }
+        }
+    }
+    cvWriteFrame(video, i);
+    cvReleaseImage(&i);
+    free_image(copy);
+}
+
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg_frames, float hier, int w, int h, int frames, int fullscreen)
 {
     demo_delay = delay;
@@ -144,7 +166,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     demo_classes = classes;
     demo_thresh = thresh;
     demo_hier = hier;
-    printf("Demo\n");
+    write_to_output(STD_ERR, "Demo\n");
     net = parse_network_cfg(cfgfile);
     if(weightfile){
         load_weights(&net, weightfile);
@@ -156,7 +178,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     srand(2222222);
 
     if(filename){
-        printf("video file: %s\n", filename);
+        write_to_output(STD_ERR, "video file: %s\n", filename);
         cap = cvCaptureFromFile(filename);
     }else{
         cap = cvCaptureFromCAM(cam_index);
@@ -195,7 +217,14 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     buff_letter[2] = letterbox_image(buff[0], net.w, net.h);
     ipl = cvCreateImage(cvSize(buff[0].w,buff[0].h), IPL_DEPTH_8U, buff[0].c);
 
-    int count = 0;
+    const char* output_video_filename = "./detections.mpeg";
+    double fps = 25; //cvGetCaptureProperty(cap, CV_CAP_PROP_FPS);
+    CvSize s;
+    s.width = buff[0].w;
+    s.height = buff[0].h;
+    CvVideoWriter *output_video = cvCreateVideoWriter(output_video_filename, CV_FOURCC('M','P','E','G'), fps, s, 1);
+
+    int count = -1;
     if(!prefix){
         cvNamedWindow("Demo", CV_WINDOW_NORMAL); 
         if(fullscreen){
@@ -208,6 +237,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 
     demo_time = get_wall_time();
 
+    char name[256];
     while(!demo_done){
         buff_index = (buff_index + 1) %3;
         if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
@@ -223,14 +253,24 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
             }
             display_in_thread(0);
         }else{
-            char name[256];
-            sprintf(name, "%s_%08d", prefix, count);
-            save_image(buff[(buff_index + 1)%3], name);
+            if (count >= 0)
+            {
+                sprintf(name, "%s_%08d", prefix, count);
+                save_image(buff[(buff_index + 1)%3], name);
+                write_frame(output_video, &buff[(buff_index + 1)%3]);
+            }
         }
         pthread_join(fetch_thread, 0);
         pthread_join(detect_thread, 0);
         ++count;
     }
+    //  Display the last frame detected
+    buff_index = (buff_index + 1) %3;
+    sprintf(name, "%s_%08d", prefix, count);
+    save_image(buff[(buff_index + 1)%3], name);
+    write_frame(output_video, &buff[(buff_index + 1)%3]);
+
+    cvReleaseVideoWriter(&output_video);
 }
 #else
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg, float hier, int w, int h, int frames, int fullscreen)

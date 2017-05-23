@@ -4,6 +4,8 @@
 *.out
 *.png
 *.jpg
+*.mpeg
+*.avi
 old/
 mnist/
 data/
@@ -11,12 +13,16 @@ caffe/
 grasp/
 images/
 opencv/
+output/
 convnet/
 decaf/
 submission/
 cfg/
 darknet
 .fuse*
+
+# QtCreator Generated #
+*.user
 
 # OS Generated #
 .DS_Store*

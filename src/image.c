@@ -2,6 +2,7 @@
 #include "utils.h"
 #include "blas.h"
 #include "cuda.h"
+#include "output.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -21,7 +22,7 @@ float get_color(int c, int x, int max)
     int j = ceil(ratio);
     ratio -= i;
     float r = (1-ratio) * colors[i][c] + ratio*colors[j][c];
-    //printf("%f\n", r);
+    //write_to_output(STD_OUT, "%f\n", r);
     return r;
 }
 
@@ -187,8 +188,7 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
                 alphabet = 0;
             }
 
-            //printf("%d %s: %.0f%%\n", i, names[class], prob*100);
-            printf("%s: %.0f%%\n", names[class], prob*100);
+            write_to_output(STD_OUT, "%s: %.0f%%", names[class], prob*100);
             int offset = class*123457 % classes;
             float red = get_color(2,offset,classes);
             float green = get_color(1,offset,classes);
@@ -206,6 +206,8 @@ void draw_detections(image im, int num, float thresh, box *boxes, float **probs,
             int right = (b.x+b.w/2.)*im.w;
             int top   = (b.y-b.h/2.)*im.h;
             int bot   = (b.y+b.h/2.)*im.h;
+
+            write_to_output(STD_OUT, "\t(%d, %d, %d, %d)\n", left, top, right, bot);
 
             if(left < 0) left = 0;
             if(right > im.w-1) right = im.w-1;
@@ -509,12 +511,12 @@ image load_image_cv(char *filename, int channels)
     else if (channels == 1) flag = 0;
     else if (channels == 3) flag = 1;
     else {
-        fprintf(stderr, "OpenCV can't force load with %d channels\n", channels);
+        write_to_output(STD_ERR, "OpenCV can't force load with %d channels\n", channels);
     }
 
     if( (src = cvLoadImage(filename, flag)) == 0 )
     {
-        fprintf(stderr, "Cannot load image \"%s\"\n", filename);
+        write_to_output(STD_ERR, "Cannot load image \"%s\"\n", filename);
         char buff[256];
         sprintf(buff, "echo %s >> bad.list", filename);
         system(buff);
@@ -591,7 +593,7 @@ void save_image_png(image im, const char *name)
     }
     int success = stbi_write_png(buff, im.w, im.h, im.c, data, im.w*im.c);
     free(data);
-    if(!success) fprintf(stderr, "Failed to write image %s\n", buff);
+    if(!success) write_to_output(STD_ERR,  "Failed to write image %s\n", buff);
 }
 
 void save_image(image im, const char *name)
@@ -784,7 +786,7 @@ int best_3d_shift(image a, image b, int min, int max)
             best_distance = d;
             best = i;
         }
-        printf("%d %f\n", i, d);
+        write_to_output(STD_OUT, "%d %f\n", i, d);
         free_image(c);
     }
     return best;
@@ -807,10 +809,10 @@ void composite_3d(char *f1, char *f2, char *out, int delta)
         a = b;
         b = swap;
         shift = -shift;
-        printf("swapped, %d\n", shift);
+        write_to_output(STD_OUT, "swapped, %d\n", shift);
     }
     else{
-        printf("%d\n", shift);
+        write_to_output(STD_OUT, "%d\n", shift);
     }
 
     image c = crop_image(b, delta, shift, a.w, a.h);
@@ -1279,7 +1281,7 @@ void test_resize(char *filename)
 {
     image im = load_image(filename, 0,0, 3);
     float mag = mag_array(im.data, im.w*im.h*im.c);
-    printf("L2 Norm: %f\n", mag);
+    write_to_output(STD_OUT, "L2 Norm: %f\n", mag);
     image gray = grayscale_image(im);
 
     image c1 = copy_image(im);
@@ -1317,7 +1319,7 @@ void test_resize(char *filename)
 
         distort_image(c, dhue, dsat, dexp);
         show_image(c, "rand");
-        printf("%f %f %f\n", dhue, dsat, dexp);
+        write_to_output(STD_OUT, "%f %f %f\n", dhue, dsat, dexp);
         free_image(c);
         cvWaitKey(0);
     }
@@ -1330,7 +1332,7 @@ image load_image_stb(char *filename, int channels)
     int w, h, c;
     unsigned char *data = stbi_load(filename, &w, &h, &c, channels);
     if (!data) {
-        fprintf(stderr, "Cannot load image \"%s\"\nSTB Reason: %s\n", filename, stbi_failure_reason());
+        write_to_output(STD_ERR,  "Cannot load image \"%s\"\nSTB Reason: %s\n", filename, stbi_failure_reason());
         exit(0);
     }
     if(channels) c = channels;
@@ -1412,15 +1414,15 @@ void print_image(image m)
     for(i =0 ; i < m.c; ++i){
         for(j =0 ; j < m.h; ++j){
             for(k = 0; k < m.w; ++k){
-                printf("%.2lf, ", m.data[i*m.h*m.w + j*m.w + k]);
+                write_to_output(STD_OUT, "%.2lf, ", m.data[i*m.h*m.w + j*m.w + k]);
                 if(k > 30) break;
             }
-            printf("\n");
+            write_to_output(STD_OUT, "\n");
             if(j > 30) break;
         }
-        printf("\n");
+        write_to_output(STD_OUT, "\n");
     }
-    printf("\n");
+    write_to_output(STD_OUT, "\n");
 }
 
 image collapse_images_vert(image *ims, int n)
