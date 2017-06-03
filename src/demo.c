@@ -21,6 +21,7 @@ static int demo_classes;
 static float **probs;
 static box *boxes;
 static network net;
+static image empty [3];
 static image buff [3];
 static image buff_letter[3];
 static int buff_index = 0;
@@ -76,11 +77,12 @@ void *detect_in_thread(void *ptr)
     write_to_output(STD_OUT, "FPS:%.1f\n",fps);
     write_to_output(STD_OUT, "Objects:\n\n");
     image display = buff[(buff_index+2) % 3];
+    empty[(buff_index+2) %3] = copy_image(display);
     draw_detections(display, demo_detections, demo_thresh, boxes, probs, demo_names, demo_alphabet, demo_classes);
 
     demo_index = (demo_index + 1)%demo_frame;
     running = 0;
-    
+
     clear_output();
 
     return 0;
@@ -155,7 +157,7 @@ void write_frame(CvVideoWriter* video, image* img)
     free_image(copy);
 }
 
-void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg_frames, float hier, int w, int h, int frames, int fullscreen)
+void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg_frames, float hier, int w, int h, int frames, int fullscreen, int original_frames)
 {
     demo_delay = delay;
     demo_frame = avg_frames;
@@ -212,6 +214,9 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     buff[0] = get_image_from_stream(cap);
     buff[1] = copy_image(buff[0]);
     buff[2] = copy_image(buff[0]);
+    empty[0] = copy_image(buff[0]);
+    empty[1] = copy_image(buff[0]);
+    empty[2] = copy_image(buff[0]);
     buff_letter[0] = letterbox_image(buff[0], net.w, net.h);
     buff_letter[1] = letterbox_image(buff[0], net.w, net.h);
     buff_letter[2] = letterbox_image(buff[0], net.w, net.h);
@@ -238,6 +243,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     demo_time = get_wall_time();
 
     char name[256];
+    char frame_name[256];
     while(!demo_done){
         buff_index = (buff_index + 1) %3;
         if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
@@ -255,8 +261,13 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
         }else{
             if (count >= 0)
             {
-                sprintf(name, "%s_%08d", prefix, count);
+                sprintf(name, "%s_%08d_detections", prefix, count);
                 save_image(buff[(buff_index + 1)%3], name);
+                if (original_frames == 1)
+                {
+                    sprintf(frame_name, "%s_%08d", prefix, count);
+                    save_image(empty[(buff_index + 1)%3], frame_name);
+                }
                 write_frame(output_video, &buff[(buff_index + 1)%3]);
             }
         }
@@ -266,14 +277,19 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     }
     //  Display the last frame detected
     buff_index = (buff_index + 1) %3;
-    sprintf(name, "%s_%08d", prefix, count);
+    sprintf(name, "%s_%08d_detections", prefix, count);
     save_image(buff[(buff_index + 1)%3], name);
+    if (original_frames == 1)
+    {
+        sprintf(frame_name, "%s_%08d", prefix, count);
+        save_image(empty[(buff_index + 1)%3], frame_name);
+    }
     write_frame(output_video, &buff[(buff_index + 1)%3]);
 
     cvReleaseVideoWriter(&output_video);
 }
 #else
-void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg, float hier, int w, int h, int frames, int fullscreen)
+void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg, float hier, int w, int h, int frames, int fullscreen, int original_frames)
 {
     fprintf(stderr, "Demo needs OpenCV for webcam images.\n");
 }
